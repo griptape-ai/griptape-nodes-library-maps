@@ -317,3 +317,140 @@ After you've completed those and you have your engine up and running:
 
 ### Here is an example flow that you could make with the provided nodes:
 ![Example Flow](./images/example_flow.png)
+
+# Griptape Nodes Library - Google Street Maps
+
+A collection of Griptape Nodes for integrating with Google Maps and Street View services.
+
+## Features
+
+- **Google Street View**: Fetch street view images from addresses or coordinates
+- **Image Output**: Outputs images as `ImageUrlArtifact` for downstream processing
+- **Rich Parameters**: Customizable camera angles, zoom, and image sizes
+- **Error Handling**: Comprehensive validation and error reporting
+
+## Nodes
+
+### GoogleStreetView
+
+Fetches Street View images from Google's Street View Static API using an address or coordinates.
+
+**Parameters:**
+- **Location Group:**
+  - `address`: Street address or lat/lng coordinates
+  
+- **Image Settings Group:**
+  - `size`: Image dimensions (max 640x640 for free tier)
+  - `heading`: Camera compass direction (0-360°)
+  - `fov`: Field of view/zoom level (10-120°)
+  - `pitch`: Up/down camera angle (-90 to 90°)
+  
+- **Advanced Settings Group:**
+  - `radius`: Search radius for finding imagery (meters)
+  - `source`: Imagery source filter (default/outdoor)
+  - `return_error_code`: Return errors instead of generic images
+
+**Outputs:**
+- `street_view_image`: ImageUrlArtifact containing the Street View image
+- `status`: Status message about the request
+
+## Setup
+
+### Prerequisites
+
+1. **Google Cloud Project**: Create a project with billing enabled
+2. **Street View Static API**: Enable the Street View Static API
+3. **API Key**: Generate an API key with appropriate restrictions
+
+### Environment Variables
+
+Set the following environment variable:
+
+```bash
+export GOOGLE_MAPS_API_KEY="your_api_key_here"
+```
+
+### API Key Security
+
+For production use, restrict your API key:
+- **Application restrictions**: HTTP referrers, IP addresses, or app bundles
+- **API restrictions**: Limit to Street View Static API only
+
+## Usage Examples
+
+### Basic Address Lookup
+```
+Address: "1600 Amphitheatre Parkway, Mountain View, CA"
+Size: "600x400"
+```
+
+### Coordinates with Custom View
+```
+Address: "37.4218,-122.0841"
+Size: "640x640"
+Heading: 180
+FOV: 60
+Pitch: 10
+```
+
+### International Locations
+```
+Address: "Eiffel Tower, Paris, France"
+Size: "600x400"
+Heading: 45
+```
+
+## API Considerations
+
+### Rate Limits & Costs
+- **Free Tier**: 28,000 requests per month
+- **Paid Usage**: Charged per request after free tier
+- **Image Size**: Larger images may cost more
+
+### Best Practices
+1. **Cache Results**: Store images to avoid repeated API calls
+2. **Validate Addresses**: Use proper address formatting
+3. **Handle Errors**: Check for imagery availability
+4. **Monitor Usage**: Track API consumption in Google Cloud Console
+
+## Error Handling
+
+The node provides comprehensive error handling for:
+- **Invalid API Key**: Missing or incorrect API key
+- **No Imagery**: Location has no Street View coverage
+- **Invalid Parameters**: Malformed addresses or parameters
+- **Quota Exceeded**: API usage limits reached
+- **Network Issues**: Request timeouts or connectivity problems
+
+## Dependencies
+
+- `requests`: HTTP client for API calls
+- `urllib.parse`: URL encoding utilities
+- `griptape.artifacts.ImageUrlArtifact`: Image artifact handling
+
+## Development
+
+### File Structure
+```
+google-streetmaps/
+├── __init__.py
+├── google_street_view.py
+├── griptape_nodes_library.json
+```
+
+### Adding New Nodes
+
+1. Create new node file in the directory
+2. Update `__init__.py` to export the node
+3. Add node definition to `griptape_nodes_library.json`
+
+## Support
+
+For issues and questions:
+- Check Google Maps Platform documentation
+- Verify API key setup and restrictions
+- Review node logs for detailed error messages
+
+## License
+
+This library is distributed under the same license as the Griptape framework.

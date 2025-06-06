@@ -1,0 +1,51 @@
+{
+    "name": "Google Street Maps Library",
+    "library_schema_version": "0.1.0",
+    "settings": [
+        {
+            "description": "Environment variables for storing secrets for Google Maps API",
+            "category": "nodes.Google_Maps",
+            "contents": {
+                "GOOGLE_MAPS_API_KEY": "$GOOGLE_MAPS_API_KEY"
+            }
+        }
+    ],
+    "metadata": {
+        "author": "Griptape",
+        "description": "Google Street View and Maps integration nodes for Griptape",
+        "library_version": "0.1.0",
+        "engine_version": "0.1.0",
+        "tags": [
+            "Griptape",
+            "Maps",
+            "Google",
+            "Street View",
+            "Location",
+            "Images"
+        ]
+    },
+    "dependencies": [
+        "requests>=2.31.0"
+    ],
+    "categories": [
+        {
+            "Maps": {
+                "color": "border-green-500",
+                "title": "Maps",
+                "description": "Google Maps and Street View nodes",
+                "icon": "MapPin"
+            }
+        }
+    ],
+    "nodes": [
+        {
+            "class_name": "GoogleStreetView",
+            "file_path": "google_street_view.py",
+            "metadata": {
+                "category": "Maps",
+                "description": "Fetch Street View images from Google's Street View Static API using address or coordinates",
+                "display_name": "Google Street View"
+            }
+        }
+    ]
+}
