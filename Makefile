@@ -1,4 +1,4 @@
-LIBRARY_JSON := griptape-nodes-library.json
+LIBRARY_JSON := google-maps/griptape_nodes_library.json
 
 .PHONY: version/get
 version/get: ## Get version.
