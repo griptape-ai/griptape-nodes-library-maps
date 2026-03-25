@@ -1,3 +1,5 @@
+SHELL := /bin/bash
+
 LIBRARY_JSON := google-maps/griptape_nodes_library.json
 
 .PHONY: version/get
