@@ -22,7 +22,10 @@
             "Street View",
             "Location",
             "Images"
-        ]
+        ],
+        "dependencies": {
+            "pip_dependencies": []
+        }
     },
     "dependencies": [
         "requests>=2.31.0"
