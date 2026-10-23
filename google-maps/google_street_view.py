@@ -1,11 +1,11 @@
-import time
 import urllib.parse
 
 import requests
 from griptape.artifacts import ImageUrlArtifact
 from griptape_nodes.exe_types.core_types import Parameter, ParameterGroup, ParameterMode
 from griptape_nodes.exe_types.node_types import AsyncResult, ControlNode
-from griptape_nodes.retained_mode.griptape_nodes import GriptapeNodes, logger
+from griptape_nodes.exe_types.param_components.project_file_parameter import ProjectFileParameter
+from griptape_nodes.retained_mode.griptape_nodes import logger
 from griptape_nodes.traits.options import Options
 
 SERVICE = "Google_Maps"
@@ -109,6 +109,13 @@ class GoogleStreetView(ControlNode):
         advanced_group.ui_options = {"hide": True}
         self.add_node_element(advanced_group)
 
+        self._output_file = ProjectFileParameter(
+            node=self,
+            name="output_file",
+            default_filename="streetview.jpg",
+        )
+        self._output_file.add_parameter()
+
         # Output Parameters
         self.add_parameter(
             Parameter(
@@ -209,7 +216,7 @@ class GoogleStreetView(ControlNode):
         return f"{BASE_URL}?{param_string}"
 
     def _handle_api_response(self, response: requests.Response) -> str:
-        """Handle API response and save image using StaticFilesManager."""
+        """Handle API response and save image."""
         if response.status_code == 404:
             raise ValueError("No Street View imagery available for this location.")
         elif response.status_code == 400:
@@ -219,14 +226,10 @@ class GoogleStreetView(ControlNode):
         elif response.status_code != 200:
             raise ValueError(f"Street View API error: {response.status_code}")
 
-        # Save image using StaticFilesManager
         image_data = response.content
-        filename = f"streetview_{int(time.time())}.jpg"
-
-        # Use StaticFilesManager to save the image
-        image_url = GriptapeNodes.StaticFilesManager().save_static_file(image_data, filename)
-
-        return image_url
+        dest = self._output_file.build_file()
+        saved = dest.write_bytes(image_data)
+        return saved.location
 
     def process(self) -> AsyncResult:
         """Generate Street View image."""
