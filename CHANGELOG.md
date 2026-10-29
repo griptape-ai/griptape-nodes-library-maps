@@ -10,4 +10,4 @@ the `library_version` in `google-maps/griptape_nodes_library.json`.
 
 <!-- Entries go in changelog.d/, one file each. See changelog.d/README.md. -->
 
-[Unreleased]: https://github.com/griptape-ai/griptape-nodes-library-maps/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/griptape-ai/griptape-nodes-library-maps/compare/37779236fe1fa8c84d12edbbbce025cee10a8b9c...HEAD
