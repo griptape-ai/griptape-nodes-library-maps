@@ -76,13 +76,18 @@ def test_empty_address_is_a_validation_error(node: GoogleStreetView) -> None:
     assert "Enter an address" in str(errors[0])
 
 
-def test_refused_key_keeps_google_text_in_response(node: GoogleStreetView, send: Callable[[Sender], None]) -> None:
-    body = "The provided API key is invalid."
+def test_403_is_not_reported_as_a_refused_key(node: GoogleStreetView, send: Callable[[Sender], None]) -> None:
+    body = "You must enable Billing on the Google Cloud Project."
     send(lambda _request: _response(403, body))
-    with pytest.raises(NodeError, match="Google Maps refused the API key") as raised:
+    with pytest.raises(NodeError, match="Google Maps refused the request") as raised:
         _run(node)
-    assert raised.value.response == {"body": body}
-    assert node.parameter_output_values["status"] == str(raised.value)
+    error = raised.value
+    assert "quota may be exceeded" in str(error)
+    assert error.response == {"body": body}
+    assert error.fields == {"status_code": 403}
+    assert error.links is not None
+    assert error.links[0].url == "#settings-secrets?filter=GOOGLE_MAPS_API_KEY"
+    assert node.parameter_output_values["status"] == str(error)
 
 
 def test_no_imagery_names_the_address(node: GoogleStreetView, send: Callable[[Sender], None]) -> None:

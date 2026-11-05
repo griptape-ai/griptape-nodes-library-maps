@@ -2,7 +2,7 @@ import urllib.parse
 
 import requests
 from griptape.artifacts import ImageUrlArtifact
-from griptape_nodes.exe_types.core_types import NodeError, Parameter, ParameterGroup, ParameterMode
+from griptape_nodes.exe_types.core_types import NodeError, NodeErrorLink, Parameter, ParameterGroup, ParameterMode
 from griptape_nodes.exe_types.node_types import AsyncResult, ControlNode
 from griptape_nodes.exe_types.param_components.project_file_parameter import ProjectFileParameter
 from griptape_nodes.retained_mode.griptape_nodes import logger
@@ -229,6 +229,15 @@ class GoogleStreetView(ControlNode):
             address = self.get_parameter_value("address")
             msg = f"No Street View imagery was found for '{address}'. Try a nearby address or a larger 'Radius'."
             raise NodeError(msg, fields={"status_code": 404})
+        if response.status_code == 403:
+            # Google uses 403 for a bad key, a disabled API, billing, restrictions and quota.
+            error = NodeError.from_http_response(response, provider=PROVIDER, key_refused=False)
+            msg = (
+                f"Google Maps refused the request. {API_KEY_ENV_VAR} may be invalid or restricted, the quota may be "
+                "exceeded, or the Street View Static API may not be enabled for the key."
+            )
+            links = [NodeErrorLink.from_secret(API_KEY_ENV_VAR, "Check the API key")]
+            raise NodeError(msg, fields=error.fields, response=error.response, links=links)
         if response.status_code != 200:
             raise NodeError.from_http_response(response, provider=PROVIDER, secret_name=API_KEY_ENV_VAR)
 
