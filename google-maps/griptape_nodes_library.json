@@ -14,7 +14,7 @@
         "author": "Griptape",
         "description": "Google Street View and Maps integration nodes for Griptape",
         "library_version": "0.2.0",
-        "engine_version": "0.77.0",
+        "engine_version": "0.104.0",
         "tags": [
             "Griptape",
             "Maps",
