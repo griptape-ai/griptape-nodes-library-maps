@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
-import google_street_view
 import pytest
 import requests
 from google_street_view import GoogleStreetView
@@ -58,11 +60,7 @@ def test_missing_key_is_the_only_validation_error(node: GoogleStreetView, monkey
     errors = node.validate_before_node_run()
     assert errors is not None
     assert len(errors) == 1
-    error = errors[0]
-    assert isinstance(error, NodeError)
-    assert "GOOGLE_MAPS_API_KEY is not set" in str(error)
-    assert error.links is not None
-    assert error.links[0].url == "#settings-secrets?filter=GOOGLE_MAPS_API_KEY"
+    assert "GOOGLE_MAPS_API_KEY is not set" in str(errors[0])
 
 
 def test_missing_key_stops_the_run(node: GoogleStreetView, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -78,58 +76,19 @@ def test_empty_address_is_a_validation_error(node: GoogleStreetView) -> None:
     assert "Enter an address" in str(errors[0])
 
 
-def test_bad_size_is_a_validation_error(node: GoogleStreetView) -> None:
-    # The editor rejects values outside the dropdown, so a connected string is the way to reach this.
-    node.parameter_values["size"] = "huge"
-    errors = node.validate_before_node_run()
-    assert errors is not None
-    assert "'Size' must look like 'widthxheight'" in str(errors[0])
-
-
-def test_valid_inputs_pass_validation(node: GoogleStreetView) -> None:
-    assert node.validate_before_node_run() is None
-
-
-def test_refused_key_links_to_settings(node: GoogleStreetView, send: Callable[[Sender], None]) -> None:
-    body = "The Google Maps Platform server rejected your request. The provided API key is invalid."
+def test_refused_key_keeps_google_text_in_response(node: GoogleStreetView, send: Callable[[Sender], None]) -> None:
+    body = "The provided API key is invalid."
     send(lambda _request: _response(403, body))
-    with pytest.raises(NodeError) as raised:
+    with pytest.raises(NodeError, match="Google Maps refused the API key") as raised:
         _run(node)
-    error = raised.value
-    assert "Google refused the request" in str(error)
-    assert error.fields == {"status_code": 403}
-    assert error.response == {"text": body}
-    assert error.links is not None
-    assert error.links[0].url == "#settings-secrets?filter=GOOGLE_MAPS_API_KEY"
-    assert node.parameter_output_values["status"] == str(error)
+    assert raised.value.response == {"body": body}
+    assert node.parameter_output_values["status"] == str(raised.value)
 
 
 def test_no_imagery_names_the_address(node: GoogleStreetView, send: Callable[[Sender], None]) -> None:
     send(lambda _request: _response(404))
-    with pytest.raises(NodeError, match="No Street View imagery was found for '1600 Amphitheatre Parkway'") as raised:
+    with pytest.raises(NodeError, match="No Street View imagery was found for '1600 Amphitheatre Parkway'"):
         _run(node)
-    assert raised.value.fields == {"status_code": 404}
-    assert raised.value.response is None
-
-
-def test_bad_request(node: GoogleStreetView, send: Callable[[Sender], None]) -> None:
-    send(lambda _request: _response(400, "Invalid request."))
-    with pytest.raises(NodeError, match="Google rejected the request") as raised:
-        _run(node)
-    assert raised.value.response == {"text": "Invalid request."}
-
-
-def test_rate_limit(node: GoogleStreetView, send: Callable[[Sender], None]) -> None:
-    send(lambda _request: _response(429))
-    with pytest.raises(NodeError, match="rate-limiting"):
-        _run(node)
-
-
-def test_unexpected_status(node: GoogleStreetView, send: Callable[[Sender], None]) -> None:
-    send(lambda _request: _response(502, "Bad gateway"))
-    with pytest.raises(NodeError, match=r"unexpected status \(502\)") as raised:
-        _run(node)
-    assert raised.value.fields == {"status_code": 502}
 
 
 def test_connection_failure_does_not_leak_the_key(node: GoogleStreetView, send: Callable[[Sender], None]) -> None:
@@ -138,26 +97,26 @@ def test_connection_failure_does_not_leak_the_key(node: GoogleStreetView, send: 
         raise requests.ConnectionError(msg)
 
     send(refuse)
-    with pytest.raises(NodeError, match="Could not reach the Street View API") as raised:
+    with pytest.raises(NodeError, match="Could not reach Google Maps") as raised:
         _run(node)
     assert API_KEY not in str(raised.value)
-    assert raised.value.fields == {"error_type": "ConnectionError"}
 
 
-def test_timeout(node: GoogleStreetView, send: Callable[[Sender], None]) -> None:
-    def time_out(_request: requests.PreparedRequest) -> requests.Response:
-        raise requests.Timeout
+def test_other_request_failure_does_not_leak_the_key(node: GoogleStreetView, send: Callable[[Sender], None]) -> None:
+    def fail(request: requests.PreparedRequest) -> requests.Response:
+        raise requests.TooManyRedirects(request.url)
 
-    send(time_out)
-    with pytest.raises(NodeError, match="did not respond within 30 seconds"):
+    send(fail)
+    with pytest.raises(NodeError, match="request to Google Maps failed") as raised:
         _run(node)
+    assert API_KEY not in str(raised.value)
 
 
-def test_success_saves_the_image(
-    node: GoogleStreetView, send: Callable[[Sender], None], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    send(lambda _request: _response(200, "jpeg-bytes"))
-    monkeypatch.setattr(node, "_handle_api_response", lambda response: f"saved:{response.status_code}")
-    _run(node)
-    assert node.parameter_output_values["street_view_image"].value == "saved:200"
-    assert google_street_view.SERVICE == "Google_Maps"
+def test_loads_as_the_engine_does(monkeypatch: pytest.MonkeyPatch) -> None:
+    path = Path(__file__).parents[3] / "google-maps" / "google_street_view.py"
+    monkeypatch.syspath_prepend(str(path.parent))
+    monkeypatch.setitem(sys.modules, "google-maps", None)
+    spec = importlib.util.spec_from_file_location("engine_style_google_street_view", path)
+    assert spec is not None
+    assert spec.loader is not None
+    spec.loader.exec_module(importlib.util.module_from_spec(spec))

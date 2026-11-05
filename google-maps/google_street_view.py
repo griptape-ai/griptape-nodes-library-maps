@@ -2,7 +2,7 @@ import urllib.parse
 
 import requests
 from griptape.artifacts import ImageUrlArtifact
-from griptape_nodes.exe_types.core_types import NodeError, NodeErrorLink, Parameter, ParameterGroup, ParameterMode
+from griptape_nodes.exe_types.core_types import NodeError, Parameter, ParameterGroup, ParameterMode
 from griptape_nodes.exe_types.node_types import AsyncResult, ControlNode
 from griptape_nodes.exe_types.param_components.project_file_parameter import ProjectFileParameter
 from griptape_nodes.retained_mode.griptape_nodes import logger
@@ -12,96 +12,8 @@ SERVICE = "Google_Maps"
 API_KEY_ENV_VAR = "GOOGLE_MAPS_API_KEY"
 BASE_URL = "https://maps.googleapis.com/maps/api/streetview"
 REQUEST_TIMEOUT_SECONDS = 30
-MAX_RESPONSE_TEXT_CHARS = 2000
-
+PROVIDER = "Google Maps"
 GET_API_KEY_URL = "https://developers.google.com/maps/documentation/streetview/get-api-key"
-ERROR_MESSAGES_URL = "https://developers.google.com/maps/documentation/streetview/error-messages"
-USAGE_AND_BILLING_URL = "https://developers.google.com/maps/documentation/streetview/usage-and-billing"
-REQUEST_PARAMETERS_URL = "https://developers.google.com/maps/documentation/streetview/request-streetview"
-
-HTTP_BAD_REQUEST = 400
-HTTP_FORBIDDEN = 403
-HTTP_NOT_FOUND = 404
-HTTP_TOO_MANY_REQUESTS = 429
-
-
-def _key_settings_link(label: str = "Add the API key") -> NodeErrorLink:
-    return NodeErrorLink(label=label, url=f"#settings-secrets?filter={API_KEY_ENV_VAR}")
-
-
-def missing_key_error() -> NodeError:
-    """The error for a run without GOOGLE_MAPS_API_KEY, linking to Settings and to Google's key page."""
-    return NodeError(
-        f"{API_KEY_ENV_VAR} is not set. Add it in Settings → API Keys & Secrets, then run the node again.",
-        links=[_key_settings_link(), NodeErrorLink(label="Get a Google Maps API key", url=GET_API_KEY_URL)],
-    )
-
-
-def error_from_http_response(response: requests.Response, address: str) -> NodeError:
-    """The error for a Street View response that is not a 200.
-
-    Google answers these with a short plain-text body, which goes in `response` as `text`.
-    """
-    status = response.status_code
-    text = (response.text or "").strip()[:MAX_RESPONSE_TEXT_CHARS]
-    payload = {"text": text} if text else None
-    fields: dict[str, str | int | float | bool] = {"status_code": status}
-    match status:
-        case 404:
-            return NodeError(
-                f"No Street View imagery was found for '{address}'. Try a nearby address or a larger 'Radius'.",
-                fields=fields,
-                response=payload,
-                links=[NodeErrorLink(label="Street View error codes", url=ERROR_MESSAGES_URL)],
-            )
-        case 400:
-            return NodeError(
-                "Google rejected the request. Check 'Address', 'Size', 'Heading', 'Field of View', 'Pitch' "
-                "and 'Radius', then run the node again.",
-                fields=fields,
-                response=payload,
-                links=[NodeErrorLink(label="Street View request parameters", url=REQUEST_PARAMETERS_URL)],
-            )
-        case 403:
-            return NodeError(
-                f"Google refused the request. Check that {API_KEY_ENV_VAR} is valid, that the Street View Static "
-                "API is enabled for it, and that billing and quota allow the request.",
-                fields=fields,
-                response=payload,
-                links=[
-                    _key_settings_link("Update the API key"),
-                    NodeErrorLink(label="Usage and billing", url=USAGE_AND_BILLING_URL),
-                ],
-            )
-        case 429:
-            return NodeError(
-                "Google is rate-limiting Street View requests. Wait a minute and run the node again.",
-                fields=fields,
-                response=payload,
-                links=[NodeErrorLink(label="Usage and billing", url=USAGE_AND_BILLING_URL)],
-            )
-        case _:
-            return NodeError(
-                f"The Street View API returned an unexpected status ({status}). Run the node again.",
-                fields=fields,
-                response=payload,
-                links=[NodeErrorLink(label="Street View error codes", url=ERROR_MESSAGES_URL)],
-            )
-
-
-def error_from_request_exception(error: requests.RequestException) -> NodeError:
-    """The error for a request that never got a response.
-
-    The exception text is left out of the message: it repeats the request URL, which carries the API key.
-    """
-    fields: dict[str, str | int | float | bool] = {"error_type": type(error).__name__}
-    if isinstance(error, requests.Timeout):
-        message = f"The Street View API did not respond within {REQUEST_TIMEOUT_SECONDS} seconds. Run the node again."
-    elif isinstance(error, requests.ConnectionError):
-        message = "Could not reach the Street View API. Check your internet connection and run the node again."
-    else:
-        message = "The request to the Street View API failed. Run the node again."
-    return NodeError(message, fields=fields)
 
 
 class GoogleStreetView(ControlNode):
@@ -255,7 +167,7 @@ class GoogleStreetView(ControlNode):
     def validate_before_node_run(self) -> list[Exception] | None:
         """Report a missing API key on its own, then input problems."""
         if not self._get_api_key():
-            return [missing_key_error()]
+            return [NodeError.from_missing_secret(API_KEY_ENV_VAR, key_url=GET_API_KEY_URL)]
         return self._input_errors() or None
 
     def _validate_size_format(self, size: str) -> bool:
@@ -313,8 +225,12 @@ class GoogleStreetView(ControlNode):
 
     def _handle_api_response(self, response: requests.Response) -> str:
         """Handle API response and save image."""
+        if response.status_code == 404:
+            address = self.get_parameter_value("address")
+            msg = f"No Street View imagery was found for '{address}'. Try a nearby address or a larger 'Radius'."
+            raise NodeError(msg, fields={"status_code": 404})
         if response.status_code != 200:
-            raise error_from_http_response(response, str(self.get_parameter_value("address")))
+            raise NodeError.from_http_response(response, provider=PROVIDER, secret_name=API_KEY_ENV_VAR)
 
         image_data = response.content
         dest = self._output_file.build_file()
@@ -329,7 +245,7 @@ class GoogleStreetView(ControlNode):
                 # Debug: Print API key info (following Kling pattern)
                 api_key = self._get_api_key()
                 if not api_key:
-                    raise missing_key_error()
+                    raise NodeError.from_missing_secret(API_KEY_ENV_VAR, key_url=GET_API_KEY_URL)
                 if input_errors := self._input_errors():
                     raise input_errors[0]
                 logger.info(f"API Key found: {bool(api_key)}")
@@ -343,8 +259,12 @@ class GoogleStreetView(ControlNode):
                 # Make API request
                 try:
                     response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
+                except (requests.Timeout, requests.ConnectionError) as e:
+                    raise NodeError.from_request_exception(e, provider=PROVIDER) from e
                 except requests.RequestException as e:
-                    raise error_from_request_exception(e) from e
+                    # The exception text can repeat the request URL, which carries the API key.
+                    msg = f"The request to {PROVIDER} failed. Run the node again."
+                    raise NodeError(msg, fields={"error_type": type(e).__name__}) from e
 
                 # Handle response and save image
                 image_url = self._handle_api_response(response)
